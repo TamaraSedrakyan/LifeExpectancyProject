@@ -1,0 +1,541 @@
+---
+title: "Project"
+authors: "Tamara Sedrakyan"
+date: "11/30/2019"
+output: pdf_document
+---
+
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r}
+library(dplyr)
+library(ggplot2)
+library(GGally)
+library(psych)
+library(caret)
+library(e1071)
+library(ROCR)
+library(class)
+library(rpart)
+library(rpart.plot)
+library(randomForest)
+```
+Variable Explanations
+*Life expectancy* - Life Expectancy measured in ages
+
+*Adult Mortality* - Adult Mortality Rates of both sexes (probability of dying between 15 and 60 years per 1000 population)
+
+*infant deaths* - the number of Infant Deaths per 1000 population
+*Alcohol* - per capita (15+) alcohol consumption measured in liters of pure alcohol 
+*percentage expenditure* - Expenditure on health as a percentage of Gross Domestic Product per capita(%)
+*Hepatitis B* - the percentage of immunization coverage among 1-year-olds
+*Measles* - number of reported cases per 1000 population
+*BMI* - Average Body Mass Index of entire population
+*under-five deaths* - the number of under-five deaths per 1000 population
+*Polio* - the percentage of immunization coverage among 1-year-olds 
+*Total expenditure* - General government expenditure on health as a percentage of total government expenditure 
+*Diphtheria* - the percentage of tetanus toxoid and pertussis (DTP3) immunization coverage among 1-year-olds 
+*HIV/AIDS* - the number of deaths per 1 000 live births HIV/AIDS among 0-4-year olds
+*GDP* - Gross Domestic Product per capita measured in US dollars
+Population - the number of population of the country
+*thinness 1-19 years* - the percentage of prevalence of thinness among children and adolescents for Age 10 to 19 
+*thinness 5-9 years* - the percentage of prevalence of thinness among children for Age 5 to 9
+*Income composition of resources* - Human Development Index in terms of income composition of resources (index ranging from 0 to 1)
+*Schooling* - Number of years of School
+
+##Before proceeding, clean data to transform it from longtidutinal to cross-sectional data. 
+
+##First of all we load the data *Life Expectancy data.csv* and check the summary and structure to see 
+##the datatypes of our variables and the possible absence of some values. We have 2938 observations of 22 variables. 
+##Life expectancy is the dependent variable which we will predict throughout the project.
+##Life expectancy is statistical measure of a average  
+##Later we take Status as a dependent variable and measure how Life Expectancy measures the Status of the country. 
+##Status is a categorical variable with two possible levels: Developing and Developed. 
+
+```{r cars}
+#Data Cleaning
+life_expectancy <- read.csv("Life Expectancy Data.csv")
+head(life_expectancy, n = 3)
+```
+```{r}
+str(life_expectancy)
+```
+##As the dataset is comprised of five years, we take only year 2012, which has the least missing values. WE previously took Year 2015, which had only two complete cases. 
+##By using dplyr we filter the data and took only Year 2012 with completed cases of 129.
+```{r}
+life_expect <- life_expectancy %>%
+  filter(complete.cases(.)) %>%
+  filter(Year == "2012")
+head(life_expect, n = 3)
+str(life_expect)
+```
+
+## Ploting variables together to see the highest correlations.
+##We tried to plot the dataset with plot function, but because of the high number of variables it failed to visualize the correlations. 
+```{r pressure, echo=FALSE}
+plot(life_expect)
+```
+
+##We use ggpairs to see the correlations between different variables, since the number of variables was too many, we did it twice by seperating into two subgroups: [3:12], [13:22]. The data had too many variables resulting in non-readability of the data. We applied ggpairs function in order to understand overall correlations between the variables. See next for correlations of selected variables with life expectancy.
+```{r}
+ggpairs(life_expect,3:12)
+```
+
+
+```{r}
+ggpairs(life_expect,13:22)
+
+```
+##Based on the ggpair output we formulated the general idea about the variable correlation in the dataset, thus trying to eliminate the variables that have high correlation with each other. In this way we avoide multicollinearity.  
+
+
+
+
+##Afterwards we decided to plot some of the uncorrelated variables with ggplot in order to see how their changes affect the dependent variable Life Expectancy. 
+```{r}
+ggplot(life_expect, aes(Life.expectancy, Adult.Mortality)) +
+  geom_boxplot(fill = "plum2", color = "orchid4")+
+  facet_grid(~Status) +
+  labs(title = "Distribution of Adult Mortality and Life Expectancy", subtitle = "Based on Country Development Level") +
+  theme_minimal()+
+  theme(title = element_text(color = "orchid4", face = "bold"),
+        axis.title = element_text(color = "orchid4", face = "bold"),
+        axis.ticks = element_blank())
+```
+##The boxplot shows that Life Expectancy for Developing countries has wider range of 53-83, and Life Expectancy of Developed countries has a range of from 74-88.
+##Adult Mortality of Developed countries has more than two time higher mean compared to Developing countries. 
+##Both levels of Status have outliers. 
+
+```{r}
+ggplot(life_expect, aes(Alcohol, Life.expectancy, col = Status)) +
+  geom_point(size = 3, alpha = 0.6)+
+  theme_minimal() + 
+  scale_colour_discrete(drop=TRUE,
+        limits = levels(life_expect$Status)) +
+  geom_smooth(se = FALSE, col = "orchid4") +
+  labs(title = "Correlation Between Life Expectancy and Alcohol Consumption", y = "Average Life Expectancy") +
+  theme(title = element_text(color = "orchid4", face = "bold"),
+        axis.title = element_text(color = "orchid4", face = "bold"),
+        axis.ticks = element_blank())
+```
+
+```{r}
+corr.test(life_expect$Life.expectancy, life_expect$Alcohol)
+```
+##The correlation coefficient between the Alcohol and Life Expectancy is 53%, which implies that Alcohol Consumption explains the variation in Life Expectancy weakly.
+
+```{r}
+ggplot(life_expect, aes(infant.deaths,Life.expectancy, col = Status)) +
+  geom_point(size = 3, alpha = 0.6)+ 
+  scale_colour_discrete(drop=TRUE,
+        limits = levels(life_expect$Status)) +
+  geom_smooth(se = FALSE, col = "orchid4") +
+  theme_minimal() +
+  labs(title = "Correlation Between Life Expectancy and Infant Deaths") +
+  theme(title = element_text(color = "orchid4", face = "bold"),
+        axis.title = element_text(color = "orchid4", face = "bold"),
+        axis.ticks = element_blank())
+```
+```{r}
+corr.test(life_expect$Life.expectancy, life_expect$infant.deaths)
+```
+##As the chart shows there is almsot no correlation between the two variables. Correlation coefficient shows the same with its -0.19 figure, implying that they are weakly negatively correlated. 
+
+```{r}
+ggplot(life_expect, aes(BMI,Life.expectancy, col = Status)) +
+  geom_point(size = 3, alpha = 0.6)+ 
+    scale_color_brewer(palette = "Reds") +
+  geom_smooth(se = FALSE, col = "orchid4") +
+  theme_minimal() +
+  theme(title = element_text(color = "orchid4", face = "bold"),
+        axis.title = element_text(color = "orchid4", face = "bold"),
+        axis.ticks = element_blank()) +
+  labs(title = "Correlation Between Life Expectancy and BMI")
+```
+```{r}
+corr.test(life_expect$Life.expectancy, life_expect$BMI)
+```
+##BMI (Body Mass Index) is moderately correlated with dependent variables. The correlation coefficient is 52%. 
+
+
+```{r}
+ggplot(life_expect, aes(Measles, Life.expectancy, col = Status)) +
+  geom_point(size = 3, alpha = 0.6)+ 
+    scale_color_brewer(palette = "Reds") +
+  geom_smooth(se = FALSE, col = "orchid4") +
+  theme_minimal() +
+  theme(title = element_text(color = "orchid4", face = "bold"),
+        axis.title = element_text(color = "orchid4", face = "bold"),
+        axis.ticks = element_blank()) +
+  labs(title = "Correlation Between Life Expectancy and Measels")
+```
+```{r}
+corr.test(life_expect$Life.expectancy, life_expect$Measles)
+```
+##The variable Measles is weakly negatively correlated with Life Expectancy.
+
+```{r}
+ggplot(life_expect, aes(under.five.deaths, Life.expectancy, col = Status)) +
+ geom_point(size = 2, alpha = 0.7)+  
+  theme_bw() +
+  scale_color_brewer(palette = "Reds") +
+  geom_smooth(se = FALSE, col = "blueviolet") +
+  theme(title = element_text(color = "orchid4", face = "bold"),
+        axis.title = element_text(color = "orchid4", face = "bold"),
+        axis.ticks = element_blank()) +
+  geom_smooth(se = FALSE, col = "deeppink4") +
+  labs(title = "Correlation Between Life Expectancy and Under Five Deaths", x = "Under 5 Deaths", y = "Average Life Expectancy", subtitle = "Based on Country Development Levels")
+```
+```{r}
+corr.test(life_expect$Life.expectancy, life_expect$under.five.deaths)
+```
+
+
+
+
+
+```{r}
+ggplot(life_expect, aes(Income.composition.of.resources,Life.expectancy, col = Status)) +
+  geom_point(size = 4, alpha = 0.9)+  
+  theme_bw() +
+  scale_color_brewer(palette = "Reds") +
+  geom_smooth(se = FALSE, col = "blueviolet") +
+  theme(title = element_text(color = "orchid4", face = "bold"),
+        axis.title = element_text(color = "orchid4", face = "bold"),
+        axis.ticks = element_blank()) +
+  geom_smooth(se = FALSE, col = "deeppink4") +
+  labs(title = "Correlation Between Life Expectancy and Income Composition of Resources")
+```
+##There is a strong positive correlation between Income Composition of Resources and the Life Expectancy of the coutnries. 
+##Variation in Life Expectancy can be 89% explained by the variation in Income composition.  
+
+```{r}
+corr.test(life_expect$Life.expectancy, life_expect$Income.composition.of.resources)
+```
+
+
+```{r}
+ggplot(life_expect, aes(Schooling,Life.expectancy, col = Status)) +
+  geom_point(size = 4, alpha = 0.9)+  
+  theme_bw() +
+  scale_color_brewer(palette = "Reds") +
+  geom_smooth(se = FALSE, col = "blueviolet") +
+  theme(title = element_text(color = "orchid4", face = "bold"),
+        axis.title = element_text(color = "orchid4", face = "bold"),
+        axis.ticks = element_blank()) +
+  labs(title = "Correlation Between Life Expectancy and Schooling", y = "Average Life Expectancy", subtitle = "Based on Country Development Level")
+```
+
+```{r}
+corr.test(life_expect$Life.expectancy, life_expect$Schooling)
+```
+##Here again we see high correlation, this time between schooling the the dependent variable. The correlation coefficient is 78%. 
+
+```{r}
+ggplot(life_expect, aes(HIV.AIDS,Life.expectancy, col = Status)) +
+  geom_point(size = 2, alpha = 0.6)+
+  theme_bw() +
+  scale_color_brewer(palette = "Reds") +
+  geom_smooth(se = FALSE, col = "blueviolet") +
+  theme(title = element_text(color = "orchid4", face = "bold"),
+        axis.title = element_text(color = "orchid4", face = "bold"),
+        axis.ticks = element_blank()) +
+  labs(title = "Correlation Between Life Expectancy and HIV Viruses", y = "Average Life Expectancy", subtitle = "Based on Country Development Level")
+```
+```{r}
+corr.test(life_expect$Life.expectancy, life_expect$HIV.AIDS)
+```
+##Here we have a high negative correlation(-65%) between HIV/AIDs and Life Expectancy, since the increase in HIV decreases life expectancy. 
+
+```{r}
+ggplot(life_expect, aes(GDP,Life.expectancy, col = Status)) +
+  geom_point(size = 2, alpha = 0.6)+
+  theme_bw() +
+  scale_color_brewer(palette = "Reds") +
+  geom_smooth(se = FALSE, col = "blueviolet") +
+  theme(title = element_text(color = "orchid4", face = "bold"),
+        axis.title = element_text(color = "orchid4", face = "bold"),
+        axis.ticks = element_blank()) +
+  labs(title = "Correlation Between Life Expectancy and GDP", y = "Average Life Expectancy", subtitle = "Based on Country Development Level")
+```
+
+```{r}
+corr.test(life_expect$Life.expectancy, life_expect$GDP)
+```
+##The correlation coefficient between Life Expectancy and GDP is moderate(54%). 
+
+
+
+##After having an overall idea about our dataset, its individual variables and their possible relationships, we move on to building models and measuring the significance of the variables. 
+
+## Linear Regression
+## We start with linear regression to identify the best model explaining the life expectancy.
+
+```{r}
+set.seed(2)
+#Intercept only model
+model0 <- lm(Life.expectancy~1, data = life_expect) 
+summary(model0)
+
+```
+##With Intercept only model, we calculated the mean of the variable Life Expectancy. 
+
+
+```{r}
+ggplot(life_expect, aes(x = Schooling, y = Life.expectancy)) + 
+  geom_point(shape = 19, size = 3, col = "orchid") +
+  geom_hline(yintercept = mean(life_expect$Life.expectancy), col = "red", size = 1.5) +
+  theme_minimal() +
+  geom_segment(aes(xend = Schooling, yend = mean(life_expect$Life.expectancy, alpha = 0.2, col = "purple"))) +
+  labs(x = "GDP", y = "Life.expectancy", title = "Intercept Only Model", subtitle = "Errors")
+
+```
+##This model shows the errors of Life Expectancy with different values of GDP compared to the mean value of Life Expectancy. 
+
+```{r}
+model1 <- lm(Life.expectancy~BMI+Income.composition.of.resources+Schooling+GDP, data = life_expect) 
+summary(model1)
+```
+
+##Although we found correlation between the independent variables and the dependent variable, we can see that the P-values for BMI, Schooling and GDP are higher than the alpha, which means that the variables are not significant. High correlations cause overfitting of data, thus, we eliminate those next. 
+
+```{r}
+#Eliminating the overfitiing variables.
+model2 <- lm(Life.expectancy~Income.composition.of.resources+infant.deaths+Adult.Mortality+HIV.AIDS, data = life_expect) 
+summary(model2)
+```
+##Even though the model adjusted R-squared improved (0.8817 or 88.17%), we can see that Infant.deaths variable is still insignificant. Thus, we need to eliminate that one too before proceeding with the rest of variables. 
+
+```{r}
+#Eliminating variable "Infant.deaths".
+model3 <- lm(Life.expectancy~Income.composition.of.resources+Adult.Mortality+HIV.AIDS, data = life_expect) 
+summary(model3)
+```
+##After eliminating the infant.deaths variable, we see that the model adjusted R-squared remains high at 0.8818. Next, we are going to add variables of interest based on literature review: alcohol, Hepatitis B, and Polio
+
+```{r}
+#Adding variables of interest
+model4 <- lm(Life.expectancy~Income.composition.of.resources+Adult.Mortality+HIV.AIDS+Hepatitis.B+Polio+
+               thinness..1.19.years+Alcohol, data = life_expect) 
+summary(model4)
+```
+##The adjusted R squared improved, but we still need to eliminate the two variables that are statistically insignificant: Polio, Alcohol, Hepatitis B and thinness of the population.
+```{r}
+#Final model 
+model_final <- lm(Life.expectancy~Income.composition.of.resources+Adult.Mortality+HIV.AIDS, data = life_expect) 
+summary(model_final)
+```
+##The final adjusted R-squared is 0.8683 or 86.83%, which is high taking into account the fact that the independent variables are not intercorrelated. The variables explaining Life expectancy are Income Composition of Resources, Adult Mortality, and HIV Aids available. 
+
+##Hereby we devide our dependent variable into four categories with thresholds of below 61, between 61 and 70, between 70 and 75, above 75. 
+##The division is implemented, since the variable is numeric and we need to have categories in order to continue further with our predictions. 
+```{r}
+life_expect$Life.expectancy.cat1 <- ifelse(life_expect$Life.expectancy >= 75, 4,
+                                      ifelse(life_expect$Life.expectancy < 75 & life_expect$Life.expectancy >= 70, 3,
+                                             ifelse(life_expect$Life.expectancy <= 70 & life_expect$Life.expectancy >= 61, 2,
+                                                     ifelse(life_expect$Life.expectancy < 61, 1, NA))))
+
+head(life_expect$Life.expectancy.cat1, n = 5)
+```
+
+```{r}
+class(life_expect$Life.expectancy.cat1)
+```
+
+
+
+```{r}
+life_expect$Life.expectancy.cat1 <- as.factor(life_expect$Life.expectancy.cat1)
+life_expect$Life.expectancy.cat1 <- factor(life_expect$Life.expectancy.cat1, levels = c(1,2,3,4),
+                                      labels = c("Very low", "Low", "Medium", "High"))
+class(life_expect$Life.expectancy.cat1)
+```
+##Since the categories of the variables very numeric we changed it to factor. 
+
+
+##For the rest of our project, we will be doing predictions and checking the accuracy of models based on different methods. 
+##For the predcition we need to have our dataset seperated into train and test sets, with 30 and 70 weigths respectively. 
+```{r}
+#Constructing training and testing datasets, which willl be used for the rest of our codes. 
+set.seed(2)
+index <- createDataPartition(life_expect$Life.expectancy.cat1, p = 0.7, list = FALSE)
+Train <- life_expect[index,]
+Test <- life_expect[-index,]
+```
+
+## Naive Bayes Model
+##Naive bias model helps us to solve the classificaiton probelsm using probabilistic approach. It assumes the independent variables used are not dependent. 
+```{r}
+#Constructing Naive Bayes Model to determine High, Low, Medium and Very Low Classes of Life Expectancy. 
+model_NB = naiveBayes(Life.expectancy.cat1~Income.composition.of.resources+Adult.Mortality+HIV.AIDS, data = Train, laplace = 1)
+names(model_NB)
+model_NB$apriori
+```
+
+```{r}
+model_NB$tables
+```
+
+```{r}
+pred_class_NB = predict(model_NB, newdata = Test)
+confusion_NB = confusionMatrix(pred_class_NB, Test$Life.expectancy.cat1, positive = "High")
+confusion_NB
+```
+##Model accuracy is 0.722 or 72.22%, which is lower than the model accuracy for the final linear regression.
+##It is much higher than the No Information Rate(30.56%) of the model. 
+```{r}
+pred_prob_NB = predict(model_NB, newdata = Test, type = "raw")
+head(pred_prob_NB)
+```
+##Hereby we show the predicted probability of each class for each case. 
+
+## KNN
+##Knn is lazy learning algorithm, it does not create model but helps to predict the classification of a new sample point. 
+
+```{r}
+#We are checking on which column our dependent variable is and which ones are not numeric.  
+match("Life.expectancy.cat1", names(Train))
+```
+
+```{r}
+#We remove all the categorical variables from the dataset, as knn requires numeric ones and we leave only the variables that are in our final linear model. 
+Train_knn <- Train[, c(5,16,21)]
+Test_knn <- Test[, c(5,16,21)]
+knn1 <- knn(train = Train_knn, test = Test_knn, k = 10, cl = Train$Life.expectancy.cat1) 
+```
+# When we take K as a random number, like 10, the average accuracy is 67.56%, which is pretty low. 
+# The accuracy is low, which can be the result of an arbitrary choice of k value.
+```{r}
+mean(knn1 == Test$Life.expectancy.cat1)
+```
+
+
+# Next, we are going to find the optimal k value and construct a model based on that. 
+```{r}
+set.seed(2)
+ctrl <- trainControl(method = "cv", number = 20) 
+set.seed(2)
+knn2 <- train(Life.expectancy.cat1~Income.composition.of.resources+Adult.Mortality+HIV.AIDS, data = Train, method = "knn", 
+trControl = ctrl, tuneLength = 20)
+set.seed(2)
+knn2
+plot(knn2)
+```
+##k = 7 provides the highest accuracy taking into account the model with Income Composition of Resources, Adult Mortality and HIV Aids as independent variables. The accuracy is 69.33%, lower than the prediction with linear regression.
+
+
+## Decision Tree
+##Decision tree is a decision support tool that uses a tree-like model of decisions and their possible consequesnces.
+##Below is the decision tree model with our three main independent variables and the decision tree showing probabilities for each case.
+```{r}
+model_DT <- rpart(Life.expectancy.cat1~Income.composition.of.resources+Adult.Mortality+HIV.AIDS, data = Train)
+set.seed(2)
+prp(model_DT, type = 2, extra = 4, main = "Probabilities for each class")
+```
+##Hereby we take the right hand decision path and explain it. 
+##If income composition of resources is more than 0.72, the adult mortality is lower than 137, income composition of resources is more than or equal to 0.75, then with 100% probability the life expectancy is high. 
+
+```{r}
+pred_class_DT <- predict(model_DT, Test, type = "class")
+#printing out some predictions. Class levels should be very low, low, medium, high.
+pred_class_DT[1:10]
+```
+
+```{r}
+#Confusion matrix for Decision tree
+confusionMatrix(pred_class_DT, Test$Life.expectancy.cat1, positive = "Yes")
+```
+##The accuracy of the decision tree is 69.44%, lower than the accuracy of linear regression model, Naive Bayes and KNN. It is higher than NIF (30.56%).
+
+ 
+##Logistic Regression 
+##We have successfully explained and measured life expectancy in 120 countries, and now we measure the status of these countries based on life expectancy. We use logistic regression to measure status which is binary variable which means the countries belong to two groups, either developed or developing. 
+##We devided the dataset into again train and test sets, ensuring equal distribution in both of them. 
+##Status is converted from character to factor variable. 
+```{r}
+set.seed(2)
+index_logistic <- createDataPartition(life_expect$Status, p = 0.7, list = FALSE)
+Train_logistic <- life_expect[index,]
+Test_logistic <- life_expect[-index,]
+```
+##The logistic regression model is created with all the variables and we can see that all of them is significant including Status variable, maybe because of overplotting. 
+```{r}
+life_expect$Status <- as.factor(life_expect$Status)
+Train_logistic$Status <- as.factor(Train_logistic$Status)
+Test_logistic$Status <- as.factor(Test_logistic$Status)
+Train_logistic$Status<- factor(Train_logistic$Status,levels = c("Developing", "Developed"), labels = c(0,1))
+Train_logistic$Status
+model_LR <- glm(Status~.-Country, data = Train, family = "binomial")
+summary(model_LR)
+
+```
+##We create a model taking only Life Expectancy as dependent variable. 
+```{r}
+model_LR_st <- glm(Status~Life.expectancy, data = Train_logistic, family = "binomial")
+summary(model_LR_st)
+#predicting on Testing set
+Test_logistic$Status
+predict_LR_st <- predict(model_LR_st, newdata = Test_logistic, type = "response")
+predict_LR_st[1:10]
+```
+##Now we want to know the accuracy of prediction with only Life Expectancy variable. That is why we create a confusion matrix. 
+```{r}
+#confusion matrix for the model
+pr_class_LR_st <- factor(ifelse(predict_LR_st > 0.5, "Developed", "Developing"))
+table(Test_logistic$Status, pr_class_LR_st)
+
+confusionMatrix(pr_class_LR_st, Test_logistic$Status, positive = "Developed")
+unique(pr_class_LR_st)
+unique(Test_logistic$Status)
+```
+##The accuracy is 94.4%. 
+
+```{r}
+P_Test_LR_st <- prediction(predict_LR_st, Test_logistic$Status)
+perf_LR <- performance(P_Test_LR_st, "tpr", "fpr")
+#coloring with treshhold values
+plot(perf_LR, colorize = T)
+```
+##The area under the curve is below 1 almost zero, so with different threshold values. The accuracy is low. 
+
+```{r}
+#performance of the model
+performance(P_Test_LR_st, "auc")@y.values
+```
+
+## Random Forest
+```{r}
+model_RF <- randomForest(Life.expectancy.cat1~., data = Train[,-1], importance = T)
+model_RF
+```
+```{r}
+model2_RF <- randomForest(Life.expectancy.cat1~., data = Train[,-1], ntree = 500, mtry = 6, importance = T)
+model2_RF
+```
+```{r}
+pred_RF <- predict(model2_RF, Train, type = "class")
+
+table(pred_RF, Train$Life.expectancy.cat1)  
+```
+```{r}
+pred_RF_test <- predict(model2_RF, Test, type = "class")
+
+mean(pred_RF_test == Test$Life.expectancy.cat1)                    
+```
+```{r}
+table(pred_RF_test, Test$Life.expectancy.cat1)
+```
+```{r}
+importance(model2_RF)  
+```
+```{r}
+varImpPlot(model2_RF)
+```
+##Conclusion: 
+
+##The life expectancy is mostly dependent on HIV aids,Income contribution of resources and Adult Mortality
+##The best model was created with Random Forest with an accuracy of 97.3%. 
+##Life Expectancy was analysed with countries Status. The low accuracy of 16% showed that the country???s development status is only 16% varied based onn variance of Life Expectancy. Other factors may have higher impact on the country???s status. 
